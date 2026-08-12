@@ -1,0 +1,279 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  KASIR
+}
+
+model User {
+  id        Int           @id @default(autoincrement())
+  name      String
+  email     String        @unique
+  password  String
+  role      Role          @default(KASIR)
+  storeName String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  transactions Transaction[]
+  productions Production[]
+  expenses Expense[]
+  auditLogs AuditLog[]
+  voidedTransactions Transaction[] @relation("VoidedBy")
+}
+
+model Product {
+  id          Int               @id @default(autoincrement())
+  name        String
+  price       Float
+  modalPrice  Float             @default(0)
+  category    String
+  points      Int               @default(0)
+  image       String?
+  isActive    Boolean           @default(true)
+  stock       Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  ingredients ProductIngredient[]
+  transactionItems TransactionItem[]
+  productions Production[]
+  productMutations ProductMutation[]
+}
+
+model Ingredient {
+  id        Int               @id @default(autoincrement())
+  name      String            @unique
+  unit      String
+  stock     Float             @default(0)
+  minStock  Float             @default(0)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  products  ProductIngredient[]
+  mutations InventoryMutation[]
+}
+
+model ProductIngredient {
+  id           Int    @id @default(autoincrement())
+  productId    Int
+  ingredientId Int
+  qty          Float
+  unit         String
+
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, ingredientId])
+}
+
+model Member {
+  id          Int             @id @default(autoincrement())
+  name        String
+  phone       String          @unique
+  email       String?
+  points      Float           @default(0)
+  totalPoints Float           @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  transactions Transaction[]
+  vouchers    Voucher[]
+  pointHistories PointHistory[]
+}
+
+model Voucher {
+  id          Int           @id @default(autoincrement())
+  memberId    Int
+  rewardId    Int?
+  type        String
+  code        String        @unique
+  discountPct Float?
+  freeItem    String?
+  pointsCost  Float
+  isUsed      Boolean       @default(false)
+  expiredAt   DateTime?
+  createdAt   DateTime      @default(now())
+  usedAt      DateTime?
+
+  member      Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  reward      VoucherReward? @relation(fields: [rewardId], references: [id])
+  usages      VoucherUsage[]
+  transactions Transaction[]
+}
+
+model VoucherUsage {
+  id             Int         @id @default(autoincrement())
+  voucherId      Int
+  transactionId  Int
+  discountAmount Float?
+  usedAt         DateTime    @default(now())
+
+  voucher     Voucher     @relation(fields: [voucherId], references: [id])
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@unique([voucherId, transactionId])
+}
+
+model PointHistory {
+  id            Int          @id @default(autoincrement())
+  memberId      Int
+  transactionId Int?
+  points        Int
+  type          String
+  description   String
+  createdAt     DateTime     @default(now())
+
+  member      Member      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id])
+}
+
+model Transaction {
+  id             Int               @id @default(autoincrement())
+  invoiceNumber  String            @unique
+  memberId       Int?
+  userId         Int
+  voucherId      Int?
+  totalAmount    Float
+  discountPct    Float             @default(0)
+  discountAmount Float             @default(0)
+  taxPct         Float             @default(0)
+  taxAmount      Float             @default(0)
+  finalAmount    Float
+  paymentMethod  String            @default("cash")
+  pointsEarned   Int               @default(0)
+  voucherCogs    Float             @default(0)
+  status         String            @default("ACTIVE")
+  voidReason     String?
+  voidedAt       DateTime?
+  voidedBy       Int?
+  createdAt      DateTime          @default(now())
+
+  member    Member?           @relation(fields: [memberId], references: [id])
+  user      User              @relation(fields: [userId], references: [id])
+  voucher   Voucher?          @relation(fields: [voucherId], references: [id])
+  items     TransactionItem[]
+  usages    VoucherUsage[]
+  pointHistories PointHistory[]
+  voidedByUser User?          @relation("VoidedBy", fields: [voidedBy], references: [id])
+}
+
+model TransactionItem {
+  id            Int         @id @default(autoincrement())
+  transactionId Int
+  productId     Int
+  qty           Int
+  price         Float
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id])
+}
+
+model Expense {
+  id          Int      @id @default(autoincrement())
+  description String
+  amount      Float
+  category    String
+  status      String   @default("APPROVED")
+  userId      Int?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id])
+}
+
+model InventoryMutation {
+  id           Int        @id @default(autoincrement())
+  ingredientId Int
+  type         String
+  qty          Float
+  reference    String?
+  note         String?
+  createdAt    DateTime   @default(now())
+
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+}
+
+model Production {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  qty       Int
+  userId    Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+}
+
+model ProductMutation {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  type      String
+  qty       Int
+  reference String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  action    String
+  entity    String
+  entityId  Int?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model VoucherReward {
+  id          Int      @id @default(autoincrement())
+  name        String
+  discountPct Float?
+  pointsCost  Float
+  freeItem    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  vouchers Voucher[]
+}
+
+model ProductCategory {
+  id       Int     @id @default(autoincrement())
+  name     String  @unique
+  isActive Boolean @default(true)
+}
+
+model ExpenseCategory {
+  id       Int     @id @default(autoincrement())
+  name     String  @unique
+  isActive Boolean @default(true)
+}
+
+model IngredientUnit {
+  id       Int     @id @default(autoincrement())
+  name     String  @unique
+  isActive Boolean @default(true)
+}
+
+model PaymentMethod {
+  id       Int     @id @default(autoincrement())
+  code     String  @unique
+  name     String
+  isActive Boolean @default(true)
+}
+
+model AppSetting {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value String
+}
